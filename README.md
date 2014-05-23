@@ -16,9 +16,9 @@ vsfs mount-point ENVIRONMENT_VARIABLE
 ### Example
 
 Our examples will use bash as the shell.
+<br><br>
 
-
-Set the environment variable, and re-exec bash to force the /proc/${PID}/environ file to reload and contain the ROOT_PATH environment variable
+**Set the environment variable, and re-exec bash to force the /proc/${PID}/environ file to reload and contain the ROOT_PATH environment variable**
 ```
 $ export ROOT_PATH=/home/cole
 $ exec bash
