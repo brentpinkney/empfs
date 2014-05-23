@@ -17,34 +17,35 @@ vsfs mount-point ENVIRONMENT_VARIABLE
 
 Our examples will use bash as the shell.
 
-###### Set the environment variable, and re-exec bash to force the /proc/${PID}/environ file to reload and contain the ROOT_PATH environment variable
+
+Set the environment variable, and re-exec bash to force the /proc/${PID}/environ file to reload and contain the ROOT_PATH environment variable
 ```
 $ export ROOT_PATH=/home/cole
 $ exec bash
 $
 ```
 
-###### Show the current listing of /home/cole
+Show the current listing of /home/cole
 ```
 $ ls
 Desktop  Documents  Downloads  lxc-test  Music  Pictures  Public  research  Templates  Videos  work
 $
 ```
 
-###### Show the current listing of mountdir (the mountpoint we will use)
+Show the current listing of mountdir (the mountpoint we will use)
 ```
 $ cd mountdir
 $ ls
 $
 ```
 
-###### Start the Variant Symlink Filesystem and specify the mountpoint and the environment variable to read the path from
+Start the Variant Symlink Filesystem and specify the mountpoint and the environment variable to read the path from
 ```
 $ vsfs mountdir ROOT_PATH
 $
 ```
 
-###### Change to the mountpoint and show that it is now a variant symlink based on the ROOT_PATH environment variable
+Change to the mountpoint and show that it is now a variant symlink based on the ROOT_PATH environment variable
 ```
 $ cd mountdir
 $ ls
