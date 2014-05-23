@@ -5,6 +5,11 @@ The variant symlink filesystem is a fuse filesystem that reads the specified env
 The contents of this environment variable should be a full path. This path will then become the root path upon which all requests to the fuse 
 mount point will be appended.
 
+### Building
+
+vsfs requires the following packages in order to build on ubuntu
+* libfuse-dev
+
 ### Usage
 ```
 vsfs mount-point ENVIRONMENT_VARIABLE
