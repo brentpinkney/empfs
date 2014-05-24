@@ -123,7 +123,7 @@ static void get_env_variable( char variable[PATH_MAX], pid_t pid )
 // 1. Get the PQ_CHASSIS environment variable from /proc/PID/environ
 // 2. Append the path received from fuse to the value from PQ_CHASSIS
 // 3. Return the value
-static void pq_fullpath( char fpath[PATH_MAX], const char *path)
+static void vs_fullpath( char fpath[PATH_MAX], const char *path)
 {
 	char variable[PATH_MAX];
 	pid_t pid = fuse_get_context( )->pid;
@@ -148,7 +148,7 @@ int vs_getattr( const char *path, struct stat *statbuf )
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path);
+	vs_fullpath( fpath, path);
 
 	retstat = lstat( fpath, statbuf );
 	if ( retstat != 0){
@@ -174,7 +174,7 @@ int vs_readlink( const char *path, char *link, size_t size )
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	retstat = readlink( fpath, link, size - 1 );
 	if ( retstat < 0 ) {
@@ -198,7 +198,7 @@ int vs_mknod( const char *path, mode_t mode, dev_t dev )
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	// On Linux this could just be 'mknod(path, mode, rdev)' but this
 	//  is more portable
@@ -233,7 +233,7 @@ int vs_mkdir( const char *path, mode_t mode )
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	retstat = mkdir( fpath, mode );
 	if ( retstat < 0 )
@@ -248,7 +248,7 @@ int vs_unlink( const char *path )
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	retstat = unlink( fpath );
 	if ( retstat < 0 )
@@ -263,7 +263,7 @@ int vs_rmdir( const char *path )
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	retstat = rmdir( fpath );
 	if ( retstat < 0 )
@@ -281,7 +281,7 @@ int vs_symlink( const char *path, const char *link )
 	int retstat = 0;
 	char flink[PATH_MAX];
 
-	pq_fullpath( flink, link );
+	vs_fullpath( flink, link );
 
 	retstat = symlink( path, flink );
 	if ( retstat < 0 )
@@ -298,8 +298,8 @@ int vs_rename( const char *path, const char *newpath )
 	char fpath[PATH_MAX];
 	char fnewpath[PATH_MAX];
 
-	pq_fullpath( fpath, path ); 
-	pq_fullpath( fnewpath, newpath );
+	vs_fullpath( fpath, path ); 
+	vs_fullpath( fnewpath, newpath );
 
 	retstat = rename( fpath, fnewpath );
 	if ( retstat < 0 )
@@ -314,8 +314,8 @@ int vs_link( const char *path, const char *newpath )
 	int retstat = 0;
 	char fpath[PATH_MAX], fnewpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
-	pq_fullpath( fnewpath, newpath );
+	vs_fullpath( fpath, path );
+	vs_fullpath( fnewpath, newpath );
 
 	retstat = link( fpath, fnewpath );
 	if ( retstat < 0 ) 
@@ -330,7 +330,7 @@ int vs_chmod( const char *path, mode_t mode )
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	retstat = chmod( fpath, mode );
 	if ( retstat < 0 )
@@ -346,7 +346,7 @@ int vs_chown( const char *path, uid_t uid, gid_t gid )
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	retstat = chown( fpath, uid, gid );
 	if ( retstat < 0 )
@@ -361,7 +361,7 @@ int vs_truncate( const char *path, off_t newsize)
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	retstat = truncate( fpath, newsize );
 	if ( retstat < 0 )
@@ -377,7 +377,7 @@ int vs_utime( const char *path, struct utimbuf *ubuf )
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	retstat = utime( fpath, ubuf );
 	if ( retstat < 0)
@@ -402,7 +402,7 @@ int vs_open( const char *path, struct fuse_file_info *fi )
 	int fd;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	fd = open( fpath, fi->flags );
 	if ( fd < 0 )
@@ -465,7 +465,7 @@ int vs_statfs( const char *path, struct statvfs *statv )
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	// get stats for underlying filesystem
 	retstat = statvfs( fpath, statv );
@@ -558,7 +558,7 @@ int vs_setxattr( const char *path, const char *name, const char *value, size_t s
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	retstat = lsetxattr( fpath, name, value, size, flags );
 	if ( retstat < 0 )
@@ -573,7 +573,7 @@ int vs_getxattr( const char *path, const char *name, char *value, size_t size )
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	retstat = lgetxattr( fpath, name, value, size );
 	if ( retstat < 0 )
@@ -588,7 +588,7 @@ int vs_listxattr( const char *path, char *list, size_t size )
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	retstat = llistxattr( fpath, list, size );
 	if ( retstat < 0 )
@@ -603,7 +603,7 @@ int vs_removexattr( const char *path, const char *name )
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path ); 
+	vs_fullpath( fpath, path ); 
 
 	retstat = lremovexattr( fpath, name );
 	if ( retstat < 0 )
@@ -625,7 +625,7 @@ int vs_opendir( const char *path, struct fuse_file_info *fi )
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	dp = opendir( fpath );
 	if ( dp == NULL )
@@ -751,7 +751,7 @@ int vs_access( const char *path, int mask )
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	retstat = access( fpath, mask );
 
@@ -779,7 +779,7 @@ int vs_create( const char *path, mode_t mode, struct fuse_file_info *fi )
 	char fpath[PATH_MAX];
 	int fd;
 
-	pq_fullpath( fpath, path );
+	vs_fullpath( fpath, path );
 
 	fd = creat( fpath, mode );
 	if ( fd < 0 )
@@ -887,10 +887,12 @@ int main( int argc, char *argv[] )
 	int fuse_stat;
 	struct vs_state *vs_data;
 
+	/*
 	if ( ( getuid( ) == 0 ) || ( geteuid( ) == 0 ) ) {
 		fprintf( stderr, "Running VSFS as root opens unnacceptable security holes\n" );
 		return 1;
 	}
+	*/
 
 	if ( ( argc < 3 ) || ( argv[argc-3][0] == '-' ) || ( argv[argc-2][0] == '-' ) || ( argv[argc-1][0] == '-' ) )
 		vs_usage( );
