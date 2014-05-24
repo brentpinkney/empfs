@@ -62,4 +62,6 @@ Desktop  Documents  Downloads  lxc-test  Music  Pictures  Public  research  Temp
 $
 ```
 
+### Thanks
 
+Mostly everything I know about fuse and how to build a fuse filesystem was learn from [Joseph J. Pfeiffer's tutorial](http://www.cs.nmsu.edu/~pfeiffer/fuse-tutorial/)
