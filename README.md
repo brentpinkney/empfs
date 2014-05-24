@@ -64,4 +64,4 @@ $
 
 ### Thanks
 
-Mostly everything I know about fuse and how to build a fuse filesystem was learn from [Joseph J. Pfeiffer's "Writing a FUSE Filesystem: a tutorial"](http://www.cs.nmsu.edu/~pfeiffer/fuse-tutorial/)
+Mostly everything I know about fuse and how to build a fuse filesystem was learnt from [Joseph J. Pfeiffer's "Writing a FUSE Filesystem: a tutorial"](http://www.cs.nmsu.edu/~pfeiffer/fuse-tutorial/)
