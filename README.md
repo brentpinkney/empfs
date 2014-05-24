@@ -1,8 +1,8 @@
 ## The Variant Symlink Filesystem
 ======
 
-The variant symlink filesystem is a fuse filesystem that reads the specified environment variable from a processes `proc/${PID}/environ` file.
-The contents of this environment variable should be a full path. This path will then become the root path upon which all requests to the fuse 
+The variant symlink filesystem is a FUSE filesystem that reads the specified environment variable from a processes `proc/${PID}/environ` file.
+The contents of this environment variable should be a full path. This path will then become the root path upon which all requests to the FUSE 
 mount point will be appended.
 
 ### Building
@@ -64,4 +64,6 @@ $
 
 ### Thanks
 
-Mostly everything I know about fuse and how to build a fuse filesystem was learnt from [Joseph J. Pfeiffer's "Writing a FUSE Filesystem: a tutorial"](http://www.cs.nmsu.edu/~pfeiffer/fuse-tutorial/)
+I would like to thanks Paul Jolly and his [blog entry about trying to implement variant symlinks using Go](http://blog.myitcv.org.uk/2014/03/18/using-process-namespaces-to-implement-variant-symlinks.html). This gave us the idea of using a FUSE filesystem to solve our problems.
+
+Secondly I would like to thank Joseph J. Pfeiffer for his ["Writing a FUSE Filesystem: a tutorial"](http://www.cs.nmsu.edu/~pfeiffer/fuse-tutorial/). Almost everything I now know about FUSE and implementing a FUSE filesystem came from this tutorial.
