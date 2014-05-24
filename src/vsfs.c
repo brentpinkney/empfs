@@ -888,7 +888,7 @@ int main( int argc, char *argv[] )
 	struct vs_state *vs_data;
 
 	if ( ( getuid( ) == 0 ) || ( geteuid( ) == 0 ) ) {
-		fprintf( stderr, "Running BBFS as root opens unnacceptable security holes\n" );
+		fprintf( stderr, "Running VSFS as root opens unnacceptable security holes\n" );
 		return 1;
 	}
 
