@@ -61,6 +61,13 @@ $ ls
 Desktop  Documents  Downloads  lxc-test  Music  Pictures  Public  research  Templates  Videos  work
 $
 ```
+<br>
+
+To unmount the filesystem
+```
+$ cd ~ # or any location not inside the mount point 
+$ fusermount -u mountdir
+```
 
 ### Thanks
 
