@@ -66,11 +66,13 @@ void log_msg( const char *format, ... )
 	int i = 0;
 	va_list ap;
 
-	for( i = 0; i < VS_DATA->tab_count; i++ )
-		fprintf( VS_DATA->logfile, "   " );
-	
-	va_start( ap, format );
-	vfprintf( VS_DATA->logfile, format, ap );
+	if( VS_DATA->debug == 1 ){
+		for( i = 0; i < VS_DATA->tab_count; i++ )
+			fprintf( VS_DATA->logfile, "   " );
+		
+		va_start( ap, format );
+		vfprintf( VS_DATA->logfile, format, ap );
+	}
 }
 
 void log_fi( struct fuse_file_info *fi )

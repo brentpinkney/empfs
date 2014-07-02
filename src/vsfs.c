@@ -1153,6 +1153,7 @@ int main( int argc, char *argv[] )
 	vs_data->rootdir = NULL;
 	vs_data->logfile = NULL;
 	vs_data->env_variable = NULL;
+	vs_data->tab_count = 0;
 
 	// new_argv is used to pass the mountpoint to FUSE.
 	new_argv[0] = argv[0];
@@ -1164,7 +1165,7 @@ int main( int argc, char *argv[] )
 		switch( c )
 		{
 			case 'd':
-				vs_data->debug = 0;
+				vs_data->debug = 1;
 				break;
 			case 'e':
 				vs_data->env_variable = optarg;
@@ -1211,8 +1212,10 @@ int main( int argc, char *argv[] )
 	printf( "new_argv[2]: %s\n", new_argv[2] );
 	*/
 
-	vs_data->logfile = log_open( );
-	vs_data->tab_count = 0;
+	if( vs_data->debug == 1 )
+	{
+		vs_data->logfile = log_open( );
+	}
 
 	// turn over control to fuse
 	fprintf( stderr, "vsfs starting, calling fuse_main\n" );
