@@ -50,12 +50,105 @@
 #include <sys/types.h>
 #include <sys/xattr.h>
 
+#include "log.h"
+
+void log_enter_function( const char *function )
+{
+	log_msg( "ENTER %s\n", function );
+	VS_DATA->tab_count += 1;
+}
+
+void log_leave_function( const char *function )
+{
+	VS_DATA->tab_count -= 1;
+	log_msg( "LEAVE %s\n", function );
+
+	if( VS_DATA->tab_count == 0 )
+		log_msg( "\n" );
+}
+
 // Report errors to logfile and give -errno to caller
 static int vs_error( char *str)
 {
 	int ret = -errno;
 
+	log_msg( "ERROR %s: %s\n", str, strerror( errno ) );
+
 	return ret;
+}
+
+// Function to get the parent pid using /proc/${PID}/status
+pid_t get_parent_pid( pid_t pid )
+{
+	log_enter_function( "get_parent_pid" );
+
+	char environ[PATH_MAX];
+	FILE *fl = NULL;
+	long fl_size = 500;
+	char *buffer = NULL;
+	size_t res = 0;
+	long total = 0;
+	char *find_var = "PPid";
+	size_t length = strlen( find_var );
+	pid_t ppid = 0;
+
+	snprintf( environ, sizeof(environ), "/proc/%d/status", (int) pid );
+	printf( "environ=[%s]\n", environ );
+
+	fl = fopen( environ, "r" );
+	if( fl == NULL ){
+		fprintf( stderr, "Error opening %s\n", environ );
+		exit( 1 );
+	}
+
+	buffer = ( char * )malloc( sizeof( char ) * fl_size );
+	if( buffer == NULL ){
+		fprintf( stderr, "Error not enough memory\n" );
+		exit( 2 );
+	}
+
+
+	while( !feof( fl ) )
+	{
+		res = fread( buffer + total, 1, fl_size - total, fl );
+		total += res;
+
+		printf( "fl_size = %ld\n", fl_size );
+		printf( "total = %ld\n", total );
+
+		if( total == fl_size )
+		{
+			fl_size = fl_size * 2;
+			buffer = ( char * )realloc( buffer, sizeof( char ) * fl_size );
+			if( buffer == NULL )
+			{
+				fprintf( stderr, "Error not enough memory\n" );
+				exit( 3 );
+			}
+		}
+	}
+
+	buffer[total] = '\0';
+
+	const char *delim = "\n";
+	char *save;
+	char *p;
+
+	for( p = strtok_r(buffer, delim, &save); p; p = strtok_r( NULL, delim, &save) )
+	{
+		if( strncmp( find_var, p, strlen( find_var ) ) == 0 )
+		{
+			ppid = (pid_t)atoi( p + length + 1 );
+			break;
+		}
+	}
+
+	fclose( fl );
+	free( buffer );
+
+	log_leave_function( "get_parent_pid" );
+
+	return ppid;
 }
 
 // This function will take a pid and examine its /proc/pid/environ file
@@ -64,6 +157,8 @@ static int vs_error( char *str)
 
 static void get_env_variable( char variable[PATH_MAX], pid_t pid )
 {
+	log_enter_function( "get_env_variable" );
+
 	char environ[PATH_MAX];
 	FILE *fl = NULL;
 	long fl_size = 4096;
@@ -78,12 +173,16 @@ static void get_env_variable( char variable[PATH_MAX], pid_t pid )
 
 	fl = fopen( environ, "r" );
 	if( fl == NULL ){
+		log_msg( "Error opening %s\n", environ );
 		fprintf( stderr, "Error opening %s\n", environ );
-		exit( 1 );
+		log_leave_function( "get_env_variable" );
+		//exit( 1 );
+		return;
 	}
 
 	buffer = ( char * )malloc( sizeof( char ) * fl_size );
 	if( buffer == NULL ){
+		log_msg( "Error not enough memory\n" );
 		fprintf( stderr, "Error not enough memory\n" );
 		exit( 2 );
 	}
@@ -117,6 +216,8 @@ static void get_env_variable( char variable[PATH_MAX], pid_t pid )
 
 	fclose( fl );
 	free( buffer );
+
+	log_leave_function( "get_env_variable" );
 }
 
 
@@ -125,13 +226,35 @@ static void get_env_variable( char variable[PATH_MAX], pid_t pid )
 // 3. Return the value
 static void vs_fullpath( char fpath[PATH_MAX], const char *path)
 {
+	log_enter_function( "vs_fullpath" );
 	char variable[PATH_MAX];
+	pid_t ppid = 0;
 	pid_t pid = fuse_get_context( )->pid;
 
-	get_env_variable( variable, pid );
+	memset( variable, '\0', sizeof(char) * PATH_MAX );
+
+	log_msg( "vs_fullpath\n" );
+	log_msg( "path: %s\n", path );
+	log_msg( "pid: %d\n", pid );
+	
+	ppid = get_parent_pid( pid );
+	log_msg( "ppid: %d\n", ppid );
+	if( ppid != 0 ){
+		get_env_variable( variable, ppid );
+
+		log_msg( "parent variable: %s\n", variable );
+	}
+
+	if( strlen( variable ) == 0 ){
+		get_env_variable( variable, pid );
+
+		log_msg( "variable: %s\n", variable );
+	}
 
 	strcpy( fpath, variable );
 	strncat( fpath, path, PATH_MAX );
+
+	log_leave_function( "vs_fullpath" );
 }
 
 // All the prototype functions come from fuse.h
@@ -145,6 +268,8 @@ static void vs_fullpath( char fpath[PATH_MAX], const char *path)
  */
 int vs_getattr( const char *path, struct stat *statbuf )
 {
+	log_enter_function( "vs_getattr" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
@@ -154,6 +279,8 @@ int vs_getattr( const char *path, struct stat *statbuf )
 	if ( retstat != 0){
 		retstat = vs_error( "vs_getattr lstat" );
 	}
+
+	log_leave_function( "vs_getattr" );
 
 	return retstat;
 }
@@ -171,6 +298,8 @@ int vs_getattr( const char *path, struct stat *statbuf )
 // So pass size - 1 to system readlink.
 int vs_readlink( const char *path, char *link, size_t size )
 {
+	log_enter_function( "vs_readlink" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
@@ -185,6 +314,8 @@ int vs_readlink( const char *path, char *link, size_t size )
 		retstat = 0;
 	}
 
+	log_leave_function( "vs_readlink" );
+
 	return retstat;
 }
 
@@ -195,6 +326,8 @@ int vs_readlink( const char *path, char *link, size_t size )
  */
 int vs_mknod( const char *path, mode_t mode, dev_t dev )
 {
+	log_enter_function( "vs_mknod" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
@@ -224,12 +357,16 @@ int vs_mknod( const char *path, mode_t mode, dev_t dev )
 		}
 	}
 
+	log_leave_function( "vs_mknod" );
+
 	return retstat;
 }
 
 /** Create a directory */
 int vs_mkdir( const char *path, mode_t mode )
 {
+	log_enter_function( "vs_mkdir" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
@@ -239,12 +376,16 @@ int vs_mkdir( const char *path, mode_t mode )
 	if ( retstat < 0 )
 		retstat = vs_error( "vs_mkdir mkdir" );
 
+	log_leave_function( "vs_mkdir" );
+
 	return retstat;
 }
 
 /** Remove a file */
 int vs_unlink( const char *path )
 {
+	log_enter_function( "vs_unlink" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
@@ -254,12 +395,16 @@ int vs_unlink( const char *path )
 	if ( retstat < 0 )
 		retstat = vs_error( "vs_unlink unlink" );
 
+	log_leave_function( "vs_unlink" );
+
 	return retstat;
 }
 
 /** Remove a directory */
 int vs_rmdir( const char *path )
 {
+	log_enter_function( "vs_rmdir" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
@@ -268,6 +413,8 @@ int vs_rmdir( const char *path )
 	retstat = rmdir( fpath );
 	if ( retstat < 0 )
 		retstat = vs_error( "vs_rmdir rmdir" );
+
+	log_leave_function( "vs_rmdir" );
 
 	return retstat;
 }
@@ -278,6 +425,8 @@ int vs_rmdir( const char *path )
 // So leave path unaltered but add link to the mounted directory
 int vs_symlink( const char *path, const char *link )
 {
+	log_enter_function( "vs_symlink" );
+
 	int retstat = 0;
 	char flink[PATH_MAX];
 
@@ -287,6 +436,8 @@ int vs_symlink( const char *path, const char *link )
 	if ( retstat < 0 )
 		retstat = vs_error( "vs_symlink symlink" );
 
+	log_leave_function( "vs_symlink" );
+	
 	return retstat;
 }
 
@@ -294,6 +445,8 @@ int vs_symlink( const char *path, const char *link )
 // both path and newpath are fs-relative
 int vs_rename( const char *path, const char *newpath )
 {
+	log_enter_function( "vs_rename" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 	char fnewpath[PATH_MAX];
@@ -305,12 +458,16 @@ int vs_rename( const char *path, const char *newpath )
 	if ( retstat < 0 )
 		retstat = vs_error( "vs_rename rename" );
 
+	log_leave_function( "vs_rename" );
+
 	return retstat;
 }
 
 /** Create a hard link to a file */
 int vs_link( const char *path, const char *newpath )
 {
+	log_enter_function( "vs_link" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX], fnewpath[PATH_MAX];
 
@@ -321,12 +478,16 @@ int vs_link( const char *path, const char *newpath )
 	if ( retstat < 0 ) 
 		retstat = vs_error( "vs_link link" );
 
+
+	log_leave_function( "vs_link" );
 	return retstat;
 }
 
 /** Change the permission bits of a file */
 int vs_chmod( const char *path, mode_t mode )
 {
+	log_enter_function( "vs_chmod" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
@@ -336,13 +497,16 @@ int vs_chmod( const char *path, mode_t mode )
 	if ( retstat < 0 )
 		retstat = vs_error( "vs_chmod chmod" );
 
+	log_leave_function( "vs_chmod" );
+
 	return retstat;
 }
 
 /** Change the owner and group of a file */
 int vs_chown( const char *path, uid_t uid, gid_t gid )
-  
 {
+	log_enter_function( "vs_chown" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
@@ -352,12 +516,16 @@ int vs_chown( const char *path, uid_t uid, gid_t gid )
 	if ( retstat < 0 )
 	retstat = vs_error( "vs_chown chown" );
 
+	log_leave_function( "vs_chown" );
+
 	return retstat;
 }
 
 /** Change the size of a file */
 int vs_truncate( const char *path, off_t newsize)
 {
+	log_enter_function( "vs_truncate" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
@@ -367,6 +535,7 @@ int vs_truncate( const char *path, off_t newsize)
 	if ( retstat < 0 )
 		vs_error( "vs_truncate truncate" );
 
+	log_leave_function( "vs_truncate" );
 	return retstat;
 }
 
@@ -374,6 +543,8 @@ int vs_truncate( const char *path, off_t newsize)
 /* note -- I'll want to change this as soon as 2.6 is in debian testing */
 int vs_utime( const char *path, struct utimbuf *ubuf )
 {
+	log_enter_function( "vs_utime" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
@@ -382,6 +553,8 @@ int vs_utime( const char *path, struct utimbuf *ubuf )
 	retstat = utime( fpath, ubuf );
 	if ( retstat < 0)
 		retstat = vs_error( "vs_utime utime" );
+
+	log_leave_function( "vs_utime" );
 
 	return retstat;
 }
@@ -398,6 +571,8 @@ int vs_utime( const char *path, struct utimbuf *ubuf )
  */
 int vs_open( const char *path, struct fuse_file_info *fi )
 {
+	log_enter_function( "vs_open" );
+
 	int retstat = 0;
 	int fd;
 	char fpath[PATH_MAX];
@@ -409,6 +584,9 @@ int vs_open( const char *path, struct fuse_file_info *fi )
 		retstat = vs_error( "vs_open open" );
 
 	fi->fh = fd;
+
+	log_leave_function( "vs_open" );
+
 	return retstat;
 }
 
@@ -425,12 +603,15 @@ int vs_open( const char *path, struct fuse_file_info *fi )
  */
 int vs_read( const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi )
 {
+	log_enter_function( "vs_read" );
+
 	int retstat = 0;
 
 	retstat = pread( fi->fh, buf, size, offset );
 	if ( retstat < 0 )
 		retstat = vs_error( "vs_read read" );
 
+	log_leave_function( "vs_read" );
 	return retstat;
 }
 
@@ -444,11 +625,15 @@ int vs_read( const char *path, char *buf, size_t size, off_t offset, struct fuse
  */
 int vs_write( const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi )
 {
+	log_enter_function( "vs_write" );
+
 	int retstat = 0;
 
 	retstat = pwrite( fi->fh, buf, size, offset );
 	if ( retstat < 0 )
 		retstat = vs_error( "vs_write pwrite" );
+
+	log_leave_function( "vs_write" );
 
 	return retstat;
 }
@@ -462,6 +647,8 @@ int vs_write( const char *path, const char *buf, size_t size, off_t offset, stru
  */
 int vs_statfs( const char *path, struct statvfs *statv )
 {
+	log_enter_function( "vs_statfs" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
@@ -471,6 +658,8 @@ int vs_statfs( const char *path, struct statvfs *statv )
 	retstat = statvfs( fpath, statv );
 	if ( retstat < 0 )
 		retstat = vs_error( "vs_statfs statvfs" );
+
+	log_leave_function( "vs_statfs" );
 
 	return retstat;
 }
@@ -500,8 +689,10 @@ int vs_statfs( const char *path, struct statvfs *statv )
  */
 int vs_flush( const char *path, struct fuse_file_info *fi )
 {
+	log_enter_function( "vs_flush" );
 	int retstat = 0;
 
+	log_leave_function( "vs_flush" );
 	return retstat;
 }
 
@@ -521,12 +712,14 @@ int vs_flush( const char *path, struct fuse_file_info *fi )
  */
 int vs_release( const char *path, struct fuse_file_info *fi )
 {
+	log_enter_function( "vs_release" );
 	int retstat = 0;
 
 	// We need to close the file.  Had we allocated any resources
 	// (buffers etc) we'd need to free them here as well.
 	retstat = close( fi->fh );
 
+	log_leave_function( "vs_release" );
 	return retstat;
 }
 
@@ -539,6 +732,8 @@ int vs_release( const char *path, struct fuse_file_info *fi )
  */
 int vs_fsync( const char *path, int datasync, struct fuse_file_info *fi )
 {
+	log_enter_function( "vs_fsync" );
+
 	int retstat = 0;
 
 	if ( datasync )
@@ -549,12 +744,16 @@ int vs_fsync( const char *path, int datasync, struct fuse_file_info *fi )
 	if ( retstat < 0 )
 		vs_error( "vs_fsync fsync" );
 
+	log_leave_function( "vs_fsync" );
+
 	return retstat;
 }
 
 /** Set extended attributes */
 int vs_setxattr( const char *path, const char *name, const char *value, size_t size, int flags )
 {
+	log_enter_function( "vs_setxattr" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
@@ -564,12 +763,16 @@ int vs_setxattr( const char *path, const char *name, const char *value, size_t s
 	if ( retstat < 0 )
 		retstat = vs_error( "vs_setxattr lsetxattr" );
 
+	log_leave_function( "vs_setxattr" );
+
 	return retstat;
 }
 
 /** Get extended attributes */
 int vs_getxattr( const char *path, const char *name, char *value, size_t size )
 {
+	log_enter_function( "vs_getxattr" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
@@ -579,12 +782,16 @@ int vs_getxattr( const char *path, const char *name, char *value, size_t size )
 	if ( retstat < 0 )
 		retstat = vs_error( "vs_getxattr lgetxattr" );
 
+	log_leave_function( "vs_getxattr" );
+
 	return retstat;
 }
 
 /** List extended attributes */
 int vs_listxattr( const char *path, char *list, size_t size )
 {
+	log_enter_function( "vs_listxattr" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
@@ -594,12 +801,16 @@ int vs_listxattr( const char *path, char *list, size_t size )
 	if ( retstat < 0 )
 		retstat = vs_error( "vs_listxattr llistxattr");
 
+	log_leave_function( "vs_listxattr" );
+
 	return retstat;
 }
 
 /** Remove extended attributes */
 int vs_removexattr( const char *path, const char *name )
 {
+	log_enter_function( "vs_removexattr" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
@@ -608,6 +819,8 @@ int vs_removexattr( const char *path, const char *name )
 	retstat = lremovexattr( fpath, name );
 	if ( retstat < 0 )
 		retstat = vs_error( "vs_removexattr lrmovexattr" );
+
+	log_leave_function( "vs_removexattr" );
 
 	return retstat;
 }
@@ -621,6 +834,8 @@ int vs_removexattr( const char *path, const char *name )
  */
 int vs_opendir( const char *path, struct fuse_file_info *fi )
 {
+	log_enter_function( "vs_opendir" );
+
 	DIR *dp;
 	int retstat = 0;
 	char fpath[PATH_MAX];
@@ -632,6 +847,8 @@ int vs_opendir( const char *path, struct fuse_file_info *fi )
 		retstat = vs_error( "vs_opendir opendir" );
 
 	fi->fh = (intptr_t) dp;
+
+	log_leave_function( "vs_opendir" );
 
 	return retstat;
 }
@@ -659,6 +876,8 @@ int vs_opendir( const char *path, struct fuse_file_info *fi )
  */
 int vs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi )
 {
+	log_enter_function( "vs_readdir" );
+
 	int retstat = 0;
 	DIR *dp;
 	struct dirent *de;
@@ -678,6 +897,8 @@ int vs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 		}
 	} while ( ( de = readdir( dp ) ) != NULL );
 
+	log_leave_function( "vs_readdir" );
+
 	return retstat;
 }
 
@@ -687,9 +908,13 @@ int vs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
  */
 int vs_releasedir( const char *path, struct fuse_file_info *fi )
 {
+	log_enter_function( "vs_releasedir" );
+
 	int retstat = 0;
 
 	closedir( (DIR *) (uintptr_t) fi->fh );
+
+	log_leave_function( "vs_releasedir" );
 
 	return retstat;
 }
@@ -703,8 +928,11 @@ int vs_releasedir( const char *path, struct fuse_file_info *fi )
  */
 int vs_fsyncdir( const char *path, int datasync, struct fuse_file_info *fi )
 {
+	log_enter_function( "vs_fsyncdir" );
+
 	int retstat = 0;
 
+	log_leave_function( "vs_fsyncdir" );
 	return retstat;
 }
 
@@ -720,6 +948,8 @@ int vs_fsyncdir( const char *path, int datasync, struct fuse_file_info *fi )
  */
 void *vs_init( struct fuse_conn_info *conn )
 {
+	log_enter_function( "vs_init" );
+	log_leave_function( "vs_init" );
 	return VS_DATA;
 }
 
@@ -732,6 +962,8 @@ void *vs_init( struct fuse_conn_info *conn )
  */
 void vs_destroy( void *userdata )
 {
+	log_enter_function( "vs_destroy" );
+	log_leave_function( "vs_destroy" );
 	return;
 }
 
@@ -748,6 +980,8 @@ void vs_destroy( void *userdata )
  */
 int vs_access( const char *path, int mask )
 {
+	log_enter_function( "vs_access" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
@@ -758,6 +992,7 @@ int vs_access( const char *path, int mask )
 	if ( retstat < 0 )
 		retstat = vs_error( "vs_access access" );
 
+	log_leave_function( "vs_access" );
 	return retstat;
 }
 
@@ -775,6 +1010,8 @@ int vs_access( const char *path, int mask )
  */
 int vs_create( const char *path, mode_t mode, struct fuse_file_info *fi )
 {
+	log_enter_function( "vs_create" );
+
 	int retstat = 0;
 	char fpath[PATH_MAX];
 	int fd;
@@ -786,6 +1023,8 @@ int vs_create( const char *path, mode_t mode, struct fuse_file_info *fi )
 		retstat = vs_error( "vs_create creat" );
 
 	fi->fh = fd;
+
+	log_leave_function( "vs_create" );
 
 	return retstat;
 }
@@ -804,11 +1043,15 @@ int vs_create( const char *path, mode_t mode, struct fuse_file_info *fi )
  */
 int vs_ftruncate( const char *path, off_t offset, struct fuse_file_info *fi )
 {
+	log_enter_function( "vs_ftruncate" );
+
 	int retstat = 0;
 
 	retstat = ftruncate( fi->fh, offset );
 	if ( retstat < 0 )
-	retstat = vs_error( "vs_ftruncate ftruncate" );
+		retstat = vs_error( "vs_ftruncate ftruncate" );
+
+	log_leave_function( "vs_ftruncate" );
 
 	return retstat;
 }
@@ -827,11 +1070,15 @@ int vs_ftruncate( const char *path, off_t offset, struct fuse_file_info *fi )
  */
 int vs_fgetattr( const char *path, struct stat *statbuf, struct fuse_file_info *fi )
 {
+	log_enter_function( "vs_fgetattr" );
+
 	int retstat = 0;
 
 	retstat = fstat( fi->fh, statbuf );
 	if ( retstat < 0 )
 		retstat = vs_error( "vs_fgetattr fstat" );
+
+	log_leave_function( "vs_fgetattr" );
 
 	return retstat;
 }
@@ -878,24 +1125,23 @@ struct fuse_operations vs_oper = {
 
 void vs_usage( )
 {
-	fprintf( stderr, "usage:  vsfs [FUSE and mount options] mountPoint environment-variable\n" );
-	abort( );
+	fprintf( stderr, "usage:  vsfs [FUSE and options] -m <mount point> -e <environment variable>\n" );
+	fprintf( stderr, "\noptions:\n" );
+	fprintf( stderr, "    -d    Enable logging of debug messages to vsfs.log\n" );
+	exit( -1 );
 }
 
 int main( int argc, char *argv[] )
 {
 	int fuse_stat;
 	struct vs_state *vs_data;
-
-	/*
+	char *new_argv[3];
+	int c;
+	
 	if ( ( getuid( ) == 0 ) || ( geteuid( ) == 0 ) ) {
 		fprintf( stderr, "Running VSFS as root opens unnacceptable security holes\n" );
 		return 1;
 	}
-	*/
-
-	if ( ( argc < 3 ) || ( argv[argc-3][0] == '-' ) || ( argv[argc-2][0] == '-' ) || ( argv[argc-1][0] == '-' ) )
-		vs_usage( );
 
 	vs_data = malloc( sizeof( struct vs_state ) );
 	if ( vs_data == NULL) {
@@ -903,17 +1149,74 @@ int main( int argc, char *argv[] )
 		abort( );
 	}
 
-	// Save the environment variable
-	vs_data->env_variable = argv[argc-1];
-	// Get the mount directory as a full path
-	vs_data->rootdir = realpath( argv[argc-2], NULL );
-	// Shift argv down by 1 and NULL out the last parameter.
-	argv[argc-1] = NULL;
-	argc-=1;
+	vs_data->debug = 0;
+	vs_data->rootdir = NULL;
+	vs_data->logfile = NULL;
+	vs_data->env_variable = NULL;
+
+	// new_argv is used to pass the mountpoint to FUSE.
+	new_argv[0] = argv[0];
+	new_argv[1] = NULL;
+	new_argv[2] = NULL;
+
+	while( ( c = getopt( argc, argv, "hdm:e:" ) ) != -1 )
+	{
+		switch( c )
+		{
+			case 'd':
+				vs_data->debug = 0;
+				break;
+			case 'e':
+				vs_data->env_variable = optarg;
+				break;
+			case 'h':
+				vs_usage( );
+				break;
+			case 'm':
+				vs_data->rootdir = realpath( optarg, NULL );
+				new_argv[1] = optarg;
+				break;
+			case '?':
+				if( optopt == 'm' )
+					fprintf( stderr, "Option -m requires a mount point.\n" );
+				else if( optopt == 'v' )
+					fprintf( stderr, "Option -e requires an environment variable.\n" );
+				else if( isprint( optopt ) )
+					fprintf( stderr, "Uknown option `-%c'.\n", optopt );
+				else
+					fprintf( stderr, "Unknown option character `\\x%x'.\n", optopt );
+				return 1;
+				break;
+			default:
+				vs_usage( );
+				break;
+		}
+	}
+
+	if( vs_data->rootdir == NULL ){
+		fprintf( stderr, "Mount directory has not been specified.\n" );
+		vs_usage( );
+	}
+	if( vs_data->env_variable == NULL )
+	{
+		fprintf( stderr, "Environment variable has not been specified.\n" );
+		vs_usage( );
+	}
+
+	/*
+	printf( "vs_data->env_variable: %s\n", vs_data->env_variable );
+	printf( "vs_data->rootdir: %s\n", vs_data->rootdir );
+	printf( "new_argv[0]: %s\n", new_argv[0] );
+	printf( "new_argv[1]: %s\n", new_argv[1] );
+	printf( "new_argv[2]: %s\n", new_argv[2] );
+	*/
+
+	vs_data->logfile = log_open( );
+	vs_data->tab_count = 0;
 
 	// turn over control to fuse
 	fprintf( stderr, "vsfs starting, calling fuse_main\n" );
-	fuse_stat = fuse_main( argc, argv, &vs_oper, vs_data );
+	fuse_stat = fuse_main( 2, new_argv, &vs_oper, vs_data );
 	fprintf( stderr, "vsfs ended, fuse_main returned %d\n", fuse_stat );
 
 	return fuse_stat;

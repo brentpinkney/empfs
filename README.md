@@ -12,7 +12,7 @@ vsfs requires the following packages in order to build on ubuntu
 
 ### Usage
 ```
-vsfs mount-point ENVIRONMENT_VARIABLE
+vsfs -m mount-point -e ENVIRONMENT_VARIABLE
    
     mount-point           - The directory to which the variant symlink will be applied.
     ENVIRONMENT_VARIABLE  - The environment variable from which the root path will be obtained.
@@ -49,7 +49,7 @@ $
 
 Start the Variant Symlink Filesystem and specify the mountpoint and the environment variable to read the path from
 ```
-$ vsfs mountdir ROOT_PATH
+$ vsfs -m mountdir -e ENVIRONMENT_VARIABLE
 $
 ```
 <br>

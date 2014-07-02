@@ -46,6 +46,8 @@ struct vs_state {
     FILE *logfile;
     char *rootdir;
     char *env_variable;
+    int tab_count;
+    int debug;
 };
 #define VS_DATA ((struct vs_state *) fuse_get_context()->private_data)
 
