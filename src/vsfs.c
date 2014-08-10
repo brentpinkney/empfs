@@ -776,6 +776,8 @@ int vs_getxattr( const char *path, const char *name, char *value, size_t size )
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
+	log_msg( "path = [%s], name = [%s], value = 0x%08x, size = %d\n", path, name, value, size );
+
 	vs_fullpath( fpath, path );
 
 	retstat = lgetxattr( fpath, name, value, size );
