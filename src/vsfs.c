@@ -96,7 +96,8 @@ pid_t get_parent_pid( pid_t pid )
 	printf( "environ=[%s]\n", environ );
 
 	fl = fopen( environ, "r" );
-	if( fl == NULL ){
+	if( fl == NULL )
+	{
 		fprintf( stderr, "Error opening %s\n", environ );
 		exit( 1 );
 	}
