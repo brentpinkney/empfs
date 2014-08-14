@@ -1,7 +1,7 @@
 all:
-	$(MAKE) -C src vsfs
-	if [ -f src/vsfs ]; then cp src/vsfs vsfs; fi;
+	$(MAKE) -C src empfs
+	if [ -f src/empfs ]; then cp src/empfs empfs; fi;
 
 clean:
 	$(MAKE) -C src clean
-	if [ -f ./vsfs ]; then rm vsfs; fi;
+	if [ -f ./empfs ]; then rm empfs; fi;

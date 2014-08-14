@@ -34,33 +34,33 @@ $ mkdir floating
 Confirm the mount point does not redirect:
 ```
 $ ls /tmp/floating
+$
 ```
 
 Start the EMPFS dæmon, specifying the mountpoint and the environment variable:
 ```
-$ empfs -m /tmp/floating -e FLOAT
+$ /path/to/empfs -m /tmp/floating -e FLOAT
+$
+$ mount | grep empfs
+empfs on /tmp/floating type fuse.empfs (rw,nosuid,nodev,user=xxx)
+$ 
 ```
 
-Set the environment variable, and re-exec bash to force the
-*/proc/${PID}/environ* file to reload pointing to wendy.
+Set the environment variable to redirect to wendy:
 ```
 $ export FLOAT=/tmp/wendy
-$ exec bash
-$
 $ cat /tmp/floating/a.txt
 wendy
 ```
 
-Float to the peter directory:
+Change the environment variable to redirect to peter:
 ```
 $ export FLOAT=/tmp/peter
-$ exec bash
-$
 $ cat /tmp/floating/a.txt
 peter
 ```
 
-To unmount the filesystem
+To unmount the filesystem:
 ```
 $ cd                           # anywhere outside /tmp/floating
 $ fusermount -u /tmp/floating

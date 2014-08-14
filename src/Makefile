@@ -1,11 +1,11 @@
-vsfs : vsfs.o log.o
-	gcc -g -o vsfs vsfs.o log.o `pkg-config fuse --libs`
+empfs : empfs.o log.o
+	gcc -g -o empfs empfs.o log.o `pkg-config fuse --libs`
 
-vsfs.o : vsfs.c params.h
-	gcc -g -Wall `pkg-config fuse --cflags` -c vsfs.c
+empfs.o : empfs.c params.h
+	gcc -g -Wall `pkg-config fuse --cflags` -c empfs.c
 
 log.o : log.c log.h params.h
 	gcc -g -Wall `pkg-config fuse --cflags` -c log.c
 
 clean:
-	rm -f vsfs *.o
+	rm -f empfs *.o
