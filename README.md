@@ -1,76 +1,85 @@
-## The Variant Symlink Filesystem
+## The Environment Variable Mount Point Filesystem (EMPFS)
 ======
 
-The variant symlink filesystem is a FUSE filesystem that reads the specified environment variable from a processes `proc/${PID}/environ` file.
-The contents of this environment variable should be a full path. This path will then become the root path upon which all requests to the FUSE 
-mount point will be appended.
+The Environment Variable Mount Point Filesystem (EMPFS) is a FUSE filesystem
+that reads the specified environment variable from a process's
+`proc/${PID}/environ` file.  The environment variable should contain a full
+directory path. This path will then become the mount point to which requests to
+the FUSE mount point will be redirected.
 
 ### Building
 
-vsfs requires the following packages in order to build on ubuntu
+empfs requires the following packages in order to build on Ubuntu:
 * libfuse-dev
 
 ### Usage
 ```
-vsfs -m mount-point -e ENVIRONMENT_VARIABLE
+empfs -m mount-point -e VARIABLE
    
-    mount-point           - The directory to which the variant symlink will be applied.
-    ENVIRONMENT_VARIABLE  - The environment variable from which the root path will be obtained.
+    mount-point  - The mount directory
+    VARIABLE     - The environment variable to the actual directory
 ```
 
 ### Example
 
-Our examples will use bash as the shell.
+Using bash as the shell:
 <br><br>
 
-Set the environment variable, and re-exec bash to force the */proc/${PID}/environ* file to reload and contain the ROOT_PATH environment variable
 ```
-$ export ROOT_PATH=/home/cole
+$ cd /tmp
+$ mkdir wendy; echo "wendy" > wendy/a.txt
+$ mkdir peter; echo "peter" > peter/a.txt
+$ mkdir floating
+```
+<br>
+
+Show the current listing of the mount point:
+```
+$ ls /tmp/floating
+```
+<br>
+
+Start the EMPFS dæmon, specifying the mountpoint and the environment variable:
+```
+$ empfs -m /tmp/floating -e FLOAT
+```
+<br>
+
+Set the environment variable, and re-exec bash to force the
+*/proc/${PID}/environ* file to reload pointing to wendy.
+```
+$ export FLOAT=/tmp/wendy
 $ exec bash
-$
+$ cat /tmp/floating/a.txt
+wendy
 ```
 <br>
 
-Show the current listing of /home/cole
+Float to the peter directory:
 ```
-$ ls
-Desktop  Documents  Downloads  lxc-test  Music  Pictures  Public  research  Templates  Videos  work
-$
-```
-<br>
-
-Show the current listing of mountdir (the mountpoint we will use)
-```
-$ cd mountdir
-$ ls
-$
-```
-<br>
-
-Start the Variant Symlink Filesystem and specify the mountpoint and the environment variable to read the path from
-```
-$ vsfs -m mountdir -e ENVIRONMENT_VARIABLE
-$
-```
-<br>
-
-Change to the mountpoint and show that it is now a variant symlink based on the ROOT_PATH environment variable
-```
-$ cd mountdir
-$ ls
-Desktop  Documents  Downloads  lxc-test  Music  Pictures  Public  research  Templates  Videos  work
-$
+$ export FLOAT=/tmp/peter
+$ exec bash
+$ cat /tmp/floating/a.txt
+peter
 ```
 <br>
 
 To unmount the filesystem
 ```
-$ cd ~ # or any location not inside the mount point 
-$ fusermount -u mountdir
+$ cd                     # anywhere outside /tmp/floating
+$ fusermount -u /tmp/floating
 ```
 
 ### Thanks
 
-I would like to thanks Paul Jolly and his [blog entry about trying to implement variant symlinks using Go](http://blog.myitcv.org.uk/2014/03/18/using-process-namespaces-to-implement-variant-symlinks.html). This gave us the idea of using a FUSE filesystem to solve our problems.
+I would like to thanks Paul Jolly and his [blog entry about trying to implement
+variant symlinks using Go]
+(http://blog.myitcv.org.uk/2014/03/18/using-process-namespaces-to-implement-variant-symlinks.html).
+This gave us the idea of using a FUSE filesystem to solve our problems.
 
-Secondly I would like to thank Joseph J. Pfeiffer for his ["Writing a FUSE Filesystem: a tutorial"](http://www.cs.nmsu.edu/~pfeiffer/fuse-tutorial/). Almost everything I now know about FUSE and implementing a FUSE filesystem came from this tutorial.
+Secondly I would like to thank Joseph J. Pfeiffer for his ["Writing a FUSE
+Filesystem: a tutorial"](http://www.cs.nmsu.edu/~pfeiffer/fuse-tutorial/).
+
+Almost everything I now know about FUSE and implementing a FUSE filesystem came
+from this tutorial.
+
