@@ -66,6 +66,13 @@ $ cd                           # anywhere outside /tmp/floating
 $ fusermount -u /tmp/floating
 ```
 
+Clean up after trying the example:
+```
+$ rm -r /tmp/wendy /tmp/peter /tmp/floating
+$ unset FLOAT
+```
+
+
 ### Thanks
 
 I would like to thanks Paul Jolly and his [blog entry about trying to implement
