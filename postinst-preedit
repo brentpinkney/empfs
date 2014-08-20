@@ -19,7 +19,7 @@ echo "\t2. adding user $user"
 grep "^$user:" /etc/passwd 1>/dev/null 2>&1
 if [ $? -ne 0 ]
 then
-	useradd -g $group -c "EMPFS user" -d $home -M -s /bin/bash $user
+	useradd -g $group -c "EMPFS user" -d $home -m -s /bin/bash $user
 else
 	echo "\tuser already exists"
 fi
