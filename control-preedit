@@ -1,0 +1,11 @@
+Package: empfs
+Version: @VERSION@
+Section: web
+Priority: optional
+Architecture: all
+Essential: no
+Depends: 
+Installed-Size: 1024
+Maintainer: <support@ffroot.co.za>
+Provides: empfsd
+Description: Environment Moint Points FUSE file system.

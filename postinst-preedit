@@ -1,0 +1,31 @@
+#!/bin/sh
+
+user=empfs
+home=/var/empfs
+group=fuse
+
+echo "adding artefacts for empfs @VERSION@..."
+
+echo "\t1. adding group $group"
+grep "^$group:" /etc/group 1>/dev/null 2>&1
+if [ $? -ne 0 ]
+then
+	groupadd $group
+else
+	echo "\tgroup already exists"
+fi
+
+echo "\t2. adding user $user"
+grep "^$user:" /etc/passwd 1>/dev/null 2>&1
+if [ $? -ne 0 ]
+then
+	useradd -g $group -c "EMPFS user" -d $home -M -s /bin/bash $user
+else
+	echo "\tuser already exists"
+fi
+
+echo "\t3. correcting ownership"
+chown $user:$group /usr/bin/empfs
+
+echo "added."
+
