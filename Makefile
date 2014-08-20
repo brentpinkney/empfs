@@ -1,7 +1,11 @@
-all:
-	$(MAKE) -C src empfs
-	if [ -f src/empfs ]; then cp src/empfs empfs; fi;
+empfs : empfs.o log.o
+	gcc -g -o empfs empfs.o log.o `pkg-config fuse --libs`
+
+empfs.o : empfs.c params.h
+	gcc -g -Wall `pkg-config fuse --cflags` -c empfs.c
+
+log.o : log.c log.h params.h
+	gcc -g -Wall `pkg-config fuse --cflags` -c log.c
 
 clean:
-	$(MAKE) -C src clean
-	if [ -f ./empfs ]; then rm empfs; fi;
+	rm -f empfs *.o
