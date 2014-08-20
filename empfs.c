@@ -1174,27 +1174,20 @@ void empfs_usage( )
 	fprintf( stderr, "usage:  empfs [FUSE and options] -m <mount point> -e <environment variable>\n" );
 	fprintf( stderr, "\noptions:\n" );
 	fprintf( stderr, "    -d    Enable logging of debug messages to empfs.log\n" );
-	exit( -1 );
+	exit( 0 );
 }
 
 int main( int argc, char * argv[ ] )
 {
 	int    c;
-	int    fuse_stat;
+	char * fuse_argv[ 5 ];
 	struct vs_state * empfs_data;
-	char * new_argv[ 3 ];
 	
-	if( ( getuid( ) == 0 ) || ( geteuid( ) == 0 ) )
-	{
-		fprintf( stderr, "Running empfs as root opens unnacceptable security holes; exiting\n" );
-		return 1;
-	}
-
 	empfs_data = malloc( sizeof( struct vs_state ) );
 	if( empfs_data == NULL )
 	{
-		perror( "main calloc" );
-		abort( );
+		perror( "malloc failed" );
+		return 1;
 	}
 
 	empfs_data->debug        = 0;
@@ -1203,10 +1196,12 @@ int main( int argc, char * argv[ ] )
 	empfs_data->tab_count    = 0;
 	empfs_data->env_variable = NULL;
 
-	// new_argv is used to pass the mountpoint to FUSE.
-	new_argv[ 0 ] = argv[ 0 ];
-	new_argv[ 1 ] = NULL;
-	new_argv[ 2 ] = NULL;
+	// fuse_argv passes parameters to FUSE
+	fuse_argv[ 0 ] = argv[ 0 ];	// empfs
+	fuse_argv[ 1 ] = NULL;		// mount point 
+	fuse_argv[ 2 ] = "-o";		// http://unix.stackexchange.com/questions/19595/
+	fuse_argv[ 3 ] = "allow_other";	// how-can-i-create-a-unionfs-fuse-mount-that-is-readable-by-all
+	fuse_argv[ 4 ] = NULL;		// null terminated list
 
 	while( ( c = getopt( argc, argv, "hdm:e:" ) ) != -1 )
 	{
@@ -1223,7 +1218,7 @@ int main( int argc, char * argv[ ] )
 				break;
 			case 'm':
 				empfs_data->rootdir = realpath( optarg, NULL );
-				new_argv[ 1 ] = optarg;
+				fuse_argv[ 1 ] = optarg;
 				break;
 			case '?':
 				if( optopt == 'm' )
@@ -1253,24 +1248,19 @@ int main( int argc, char * argv[ ] )
 		empfs_usage( );
 	}
 
-	/*
-	printf( "empfs_data->env_variable: %s\n", empfs_data->env_variable );
-	printf( "empfs_data->rootdir: %s\n", empfs_data->rootdir );
-	printf( "new_argv[ 0 ]: %s\n", new_argv[ 0 ] );
-	printf( "new_argv[ 1 ]: %s\n", new_argv[ 1 ] );
-	printf( "new_argv[ 2 ]: %s\n", new_argv[ 2 ] );
-	*/
-
-	if( empfs_data->debug == 1 )
+	if( empfs_data->debug )
 	{
+		printf( "empfs_data->env_variable: %s\n", empfs_data->env_variable );
+		printf( "empfs_data->rootdir: %s\n", empfs_data->rootdir );
+		printf( "fuse_argv[ 0 ]: %s\n", fuse_argv[ 0 ] );
+		printf( "fuse_argv[ 1 ]: %s\n", fuse_argv[ 1 ] );
+		printf( "fuse_argv[ 2 ]: %s\n", fuse_argv[ 2 ] );
+		printf( "fuse_argv[ 3 ]: %s\n", fuse_argv[ 3 ] );
+		printf( "fuse_argv[ 4 ]: %s\n", fuse_argv[ 4 ] );
+
 		empfs_data->logfile = log_open( );
 	}
 
-	// turn over control to fuse
-	fprintf( stderr, "empfs starting...\n" );
-	fuse_stat = fuse_main( 2, new_argv, &empfs_oper, empfs_data );
-	fprintf( stderr, "empfs ended: %d\n", fuse_stat );
-
-	return fuse_stat;
+	return fuse_main( 4, fuse_argv, &empfs_oper, empfs_data );
 }
 
