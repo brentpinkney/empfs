@@ -616,7 +616,11 @@ int empfs_open( const char * path, struct fuse_file_info * fi )
 		{
 			retstat = empfs_error( "empfs_open open" );
 		}
-		fi->fh = fd;
+		else
+		{
+			retstat = 0;
+			fi->fh = fd;
+		}
 	}
 	log_leave_function( "empfs_open" );
 	return retstat;
