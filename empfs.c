@@ -68,9 +68,8 @@ void log_leave_function( const char * const function )
 // Report errors to logfile and give -errno to caller
 static int empfs_error( char * const str )
 {
-	int ret = -errno;
 	log_msg( "ERROR %s: %s\n", str, strerror( errno ) );
-	return ret;
+	return -errno;
 }
 
 // Get the parent pid using /proc/${PID}/status
@@ -149,7 +148,7 @@ pid_t get_parent_pid( pid_t pid )
 // Take a PID and examine its /proc/pid/environ file searching for the matching
 // environment parameter. If found, the value is copied to the variable and
 // returned.
-static void get_env_variable( char variable[ PATH_MAX ], pid_t pid )
+static int get_env_variable( char variable[ PATH_MAX ], pid_t pid )
 {
 	log_enter_function( "get_env_variable" );
 
@@ -159,9 +158,15 @@ static void get_env_variable( char variable[ PATH_MAX ], pid_t pid )
 	char *  buffer  = NULL;
 	char *  next_var = NULL;
 	char *  find_var = VS_DATA->env_variable;
-	size_t  length = strlen( find_var );
 	size_t  res   = 0;
 	long    total = 0;
+	int     found = 0;
+	static size_t length = 0;
+
+	if( length == 0 )
+	{
+		length = strlen( find_var );
+	}
 
 	snprintf( environ, sizeof( environ ), "/proc/%d/environ", (int) pid );
 
@@ -171,7 +176,7 @@ static void get_env_variable( char variable[ PATH_MAX ], pid_t pid )
 		log_msg( "Error opening %s\n", environ );
 		fprintf( stderr, "Error opening %s\n", environ );
 		log_leave_function( "get_env_variable" );
-		return;
+		return found;
 	}
 
 	buffer = (char*) malloc( sizeof( char ) * fl_size );
@@ -206,6 +211,7 @@ static void get_env_variable( char variable[ PATH_MAX ], pid_t pid )
 		if( strncmp( next_var, find_var, length ) == 0 )
 		{
 			strncpy( variable, next_var + length + 1, PATH_MAX );
+			found = 1;
 			break;
 		}
 		next_var += strlen( next_var ) + 1;
@@ -215,18 +221,20 @@ static void get_env_variable( char variable[ PATH_MAX ], pid_t pid )
 	free( buffer );
 
 	log_leave_function( "get_env_variable" );
+	return found;
 }
 
 // 1. Get the environment variable from /proc/PID/environ
 // 2. Append the path received from fuse to the value from the variable.
-// 3. Return the value.
-static void empfs_fullpath( char fpath[ PATH_MAX ], const char * const path )
+// 3. Return 1 if the variable was found.
+static int empfs_fullpath( char fpath[ PATH_MAX ], const char * const path )
 {
 	log_enter_function( "empfs_fullpath" );
 
-	char variable[ PATH_MAX ];
+	char  variable[ PATH_MAX ];
 	pid_t ppid = 0;
 	pid_t pid  = fuse_get_context( )->pid;
+	int   found = 0;
 
 	memset( variable, 0, sizeof( char ) * PATH_MAX );
 
@@ -238,20 +246,24 @@ static void empfs_fullpath( char fpath[ PATH_MAX ], const char * const path )
 	log_msg( "ppid: %d\n", ppid );
 	if( ppid != 0 )
 	{
-		get_env_variable( variable, ppid );
-		log_msg( "parent variable: %s\n", variable );
+		found = get_env_variable( variable, ppid );
+		log_msg( "parent variable: %s\n", found ? variable : "(not found)" );
 	}
 
-	if( strlen( variable ) == 0 )
+	if( found == 0 )
 	{
-		get_env_variable( variable, pid );
-		log_msg( "variable: %s\n", variable );
+		found = get_env_variable( variable, pid );
+		log_msg( "variable: %s\n", found ? variable : "(not found)" );
 	}
 
-	strcpy( fpath, variable );
-	strncat( fpath, path, PATH_MAX );
+	if( found )
+	{
+		strcpy( fpath, variable );
+		strncat( fpath, path, PATH_MAX );
+	}
 
 	log_leave_function( "empfs_fullpath" );
+	return found;
 }
 
 // All the prototype functions come from fuse.h
@@ -267,17 +279,17 @@ int empfs_getattr( const char * path, struct stat * statbuf )
 {
 	log_enter_function( "empfs_getattr" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-
-	retstat = lstat( fpath, statbuf );
-	if( retstat != 0 )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = empfs_error( "empfs_getattr lstat" );
+		retstat = lstat( fpath, statbuf );
+		if( retstat != 0 )
+		{
+			retstat = empfs_error( "empfs_getattr lstat" );
+		}
 	}
-
 	log_leave_function( "empfs_getattr" );
 	return retstat;
 }
@@ -297,22 +309,22 @@ int empfs_readlink( const char * path, char * link, size_t size )
 {
 	log_enter_function( "empfs_readlink" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-
-	retstat = readlink( fpath, link, size - 1 );
-	if( retstat < 0 )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = empfs_error( "empfs_readlink readlink" );
+		retstat = readlink( fpath, link, size - 1 );
+		if( retstat < 0 )
+		{
+			retstat = empfs_error( "empfs_readlink readlink" );
+		}
+		else
+		{
+			link[ retstat ] = 0;
+			retstat = 0;
+		}
 	}
-	else
-	{
-		link[ retstat ] = 0;
-		retstat = 0;
-	}
-
 	log_leave_function( "empfs_readlink" );
 	return retstat;
 }
@@ -326,49 +338,49 @@ int empfs_mknod( const char * path, mode_t mode, dev_t dev )
 {
 	log_enter_function( "empfs_mknod" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-
-	// On Linux this could just be 'mknod(path, mode, rdev)'
-	// but this is more portable.
-	if( S_ISREG( mode ) )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = open( fpath, O_CREAT | O_EXCL | O_WRONLY, mode );
-		if( retstat < 0 )
+		// On Linux this could just be 'mknod(path, mode, rdev)'
+		// but this is more portable.
+		if( S_ISREG( mode ) )
 		{
-			retstat = empfs_error( "empfs_mknod open" );
-		}
-		else
-		{
-			retstat = close( retstat );
+			retstat = open( fpath, O_CREAT | O_EXCL | O_WRONLY, mode );
 			if( retstat < 0 )
 			{
-				retstat = empfs_error( "empfs_mknod close" );
+				retstat = empfs_error( "empfs_mknod open" );
 			}
-		}
-	} 
-	else
-	{
-		if( S_ISFIFO( mode ) )
-		{
-			retstat = mkfifo( fpath, mode );
-			if( retstat < 0 )
+			else
 			{
-				retstat = empfs_error( "empfs_mknod mkfifo" );
+				retstat = close( retstat );
+				if( retstat < 0 )
+				{
+					retstat = empfs_error( "empfs_mknod close" );
+				}
 			}
 		}
 		else
 		{
-			retstat = mknod( fpath, mode, dev );
-			if( retstat < 0 )
+			if( S_ISFIFO( mode ) )
 			{
-				retstat = empfs_error( "empfs_mknod mknod" );
+				retstat = mkfifo( fpath, mode );
+				if( retstat < 0 )
+				{
+					retstat = empfs_error( "empfs_mknod mkfifo" );
+				}
+			}
+			else
+			{
+				retstat = mknod( fpath, mode, dev );
+				if( retstat < 0 )
+				{
+					retstat = empfs_error( "empfs_mknod mknod" );
+				}
 			}
 		}
 	}
-
 	log_leave_function( "empfs_mknod" );
 	return retstat;
 }
@@ -378,17 +390,17 @@ int empfs_mkdir( const char * path, mode_t mode )
 {
 	log_enter_function( "empfs_mkdir" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-
-	retstat = mkdir( fpath, mode );
-	if( retstat < 0 )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = empfs_error( "empfs_mkdir mkdir" );
+		retstat = mkdir( fpath, mode );
+		if( retstat < 0 )
+		{
+			retstat = empfs_error( "empfs_mkdir mkdir" );
+		}
 	}
-
 	log_leave_function( "empfs_mkdir" );
 	return retstat;
 }
@@ -398,17 +410,17 @@ int empfs_unlink( const char * path )
 {
 	log_enter_function( "empfs_unlink" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-
-	retstat = unlink( fpath );
-	if( retstat < 0 )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = empfs_error( "empfs_unlink unlink" );
+		retstat = unlink( fpath );
+		if( retstat < 0 )
+		{
+			retstat = empfs_error( "empfs_unlink unlink" );
+		}
 	}
-
 	log_leave_function( "empfs_unlink" );
 	return retstat;
 }
@@ -418,17 +430,17 @@ int empfs_rmdir( const char * path )
 {
 	log_enter_function( "empfs_rmdir" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-
-	retstat = rmdir( fpath );
-	if( retstat < 0 )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = empfs_error( "empfs_rmdir rmdir" );
+		retstat = rmdir( fpath );
+		if( retstat < 0 )
+		{
+			retstat = empfs_error( "empfs_rmdir rmdir" );
+		}
 	}
-
 	log_leave_function( "empfs_rmdir" );
 	return retstat;
 }
@@ -441,17 +453,17 @@ int empfs_symlink( const char * path, const char * link )
 {
 	log_enter_function( "empfs_symlink" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char flink[ PATH_MAX ];
 
 	empfs_fullpath( flink, link );
-
-	retstat = symlink( path, flink );
-	if( retstat < 0 )
 	{
-		retstat = empfs_error( "empfs_symlink symlink" );
+		retstat = symlink( path, flink );
+		if( retstat < 0 )
+		{
+			retstat = empfs_error( "empfs_symlink symlink" );
+		}
 	}
-
 	log_leave_function( "empfs_symlink" );
 	return retstat;
 }
@@ -462,19 +474,18 @@ int empfs_rename( const char * path, const char * newpath )
 {
 	log_enter_function( "empfs_rename" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 	char fnewpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-	empfs_fullpath( fnewpath, newpath );
-
-	retstat = rename( fpath, fnewpath );
-	if( retstat < 0 )
+	if( empfs_fullpath( fpath, path ) && empfs_fullpath( fnewpath, newpath ) )
 	{
-		retstat = empfs_error( "empfs_rename rename" );
+		retstat = rename( fpath, fnewpath );
+		if( retstat < 0 )
+		{
+			retstat = empfs_error( "empfs_rename rename" );
+		}
 	}
-
 	log_leave_function( "empfs_rename" );
 	return retstat;
 }
@@ -484,18 +495,17 @@ int empfs_link( const char * path, const char * newpath )
 {
 	log_enter_function( "empfs_link" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ], fnewpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-	empfs_fullpath( fnewpath, newpath );
-
-	retstat = link( fpath, fnewpath );
-	if( retstat < 0 )
+	if( empfs_fullpath( fpath, path ) && empfs_fullpath( fnewpath, newpath ) )
 	{
-		retstat = empfs_error( "empfs_link link" );
+		retstat = link( fpath, fnewpath );
+		if( retstat < 0 )
+		{
+			retstat = empfs_error( "empfs_link link" );
+		}
 	}
-
 	log_leave_function( "empfs_link" );
 	return retstat;
 }
@@ -505,17 +515,17 @@ int empfs_chmod( const char * path, mode_t mode )
 {
 	log_enter_function( "empfs_chmod" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-
-	retstat = chmod( fpath, mode );
-	if( retstat < 0 )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = empfs_error( "empfs_chmod chmod" );
+		retstat = chmod( fpath, mode );
+		if( retstat < 0 )
+		{
+			retstat = empfs_error( "empfs_chmod chmod" );
+		}
 	}
-
 	log_leave_function( "empfs_chmod" );
 	return retstat;
 }
@@ -525,17 +535,17 @@ int empfs_chown( const char * path, uid_t uid, gid_t gid )
 {
 	log_enter_function( "empfs_chown" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-
-	retstat = chown( fpath, uid, gid );
-	if( retstat < 0 )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = empfs_error( "empfs_chown chown" );
+		retstat = chown( fpath, uid, gid );
+		if( retstat < 0 )
+		{
+			retstat = empfs_error( "empfs_chown chown" );
+		}
 	}
-
 	log_leave_function( "empfs_chown" );
 	return retstat;
 }
@@ -545,40 +555,40 @@ int empfs_truncate( const char * path, off_t newsize)
 {
 	log_enter_function( "empfs_truncate" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-
-	retstat = truncate( fpath, newsize );
-	if( retstat < 0 )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		empfs_error( "empfs_truncate truncate" );
+		retstat = truncate( fpath, newsize );
+		if( retstat < 0 )
+		{
+			retstat = empfs_error( "empfs_truncate truncate" );
+		}
 	}
-
 	log_leave_function( "empfs_truncate" );
 	return retstat;
 }
 
 /** Change the access and/or modification times of a file */
-/* note -- I'll want to change this as soon as 2.6 is in debian testing */
 int empfs_utime( const char * path, struct utimbuf * ubuf )
 {
 	log_enter_function( "empfs_utime" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-
-	retstat = utime( fpath, ubuf );
-	if( retstat < 0)
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = empfs_error( "empfs_utime utime" );
+		retstat = utime( fpath, ubuf );
+		if( retstat < 0)
+		{
+			retstat = empfs_error( "empfs_utime utime" );
+			/* ignore file not found errors, so tar can create symlinks */
+			if( retstat == -ENOENT ) retstat = 0;
+		}
 	}
-
 	log_leave_function( "empfs_utime" );
-
 	return retstat;
 }
 
@@ -596,20 +606,23 @@ int empfs_open( const char * path, struct fuse_file_info * fi )
 {
 	log_enter_function( "empfs_open" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	int  fd;
 	char fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-
-	fd = open( fpath, fi->flags );
-	if( fd < 0 )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = empfs_error( "empfs_open open" );
+		fd = open( fpath, fi->flags );
+		if( fd < 0 )
+		{
+			retstat = empfs_error( "empfs_open open" );
+		}
+		else
+		{
+			retstat = 0;
+			fi->fh = fd;
+		}
 	}
-
-	fi->fh = fd;
-
 	log_leave_function( "empfs_open" );
 	return retstat;
 }
@@ -629,7 +642,7 @@ int empfs_read( const char * path, char * buf, size_t size, off_t offset, struct
 {
 	log_enter_function( "empfs_read" );
 
-	int retstat = 0;
+	int retstat = -ENOENT;
 
 	retstat = pread( fi->fh, buf, size, offset );
 	if( retstat < 0 )
@@ -653,7 +666,7 @@ int empfs_write( const char * path, const char * buf, size_t size, off_t offset,
 {
 	log_enter_function( "empfs_write" );
 
-	int retstat = 0;
+	int retstat = -ENOENT;
 
 	retstat = pwrite( fi->fh, buf, size, offset );
 	if( retstat < 0 )
@@ -675,20 +688,19 @@ int empfs_statfs( const char * path, struct statvfs * statv )
 {
 	log_enter_function( "empfs_statfs" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-
-	// get stats for underlying filesystem
-	retstat = statvfs( fpath, statv );
-	if( retstat < 0 )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = empfs_error( "empfs_statfs statvfs" );
+		// get stats for underlying filesystem
+		retstat = statvfs( fpath, statv );
+		if( retstat < 0 )
+		{
+			retstat = empfs_error( "empfs_statfs statvfs" );
+		}
 	}
-
 	log_leave_function( "empfs_statfs" );
-
 	return retstat;
 }
 
@@ -741,7 +753,7 @@ int empfs_flush( const char * path, struct fuse_file_info * fi )
 int empfs_release( const char * path, struct fuse_file_info * fi )
 {
 	log_enter_function( "empfs_release" );
-	int retstat = 0;
+	int retstat = -ENOENT;
 
 	// We need to close the file.  Had we allocated any resources
 	// (buffers etc) we'd need to free them here as well.
@@ -762,7 +774,7 @@ int empfs_fsync( const char * path, int datasync, struct fuse_file_info * fi )
 {
 	log_enter_function( "empfs_fsync" );
 
-	int retstat = 0;
+	int retstat = -ENOENT;
 
 	if( datasync )
 	{
@@ -775,7 +787,7 @@ int empfs_fsync( const char * path, int datasync, struct fuse_file_info * fi )
 
 	if( retstat < 0 )
 	{
-		empfs_error( "empfs_fsync fsync" );
+		retstat = empfs_error( "empfs_fsync fsync" );
 	}
 
 	log_leave_function( "empfs_fsync" );
@@ -787,17 +799,17 @@ int empfs_setxattr( const char * path, const char * name, const char * value, si
 {
 	log_enter_function( "empfs_setxattr" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-
-	retstat = lsetxattr( fpath, name, value, size, flags );
-	if( retstat < 0 )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = empfs_error( "empfs_setxattr lsetxattr" );
+		retstat = lsetxattr( fpath, name, value, size, flags );
+		if( retstat < 0 )
+		{
+			retstat = empfs_error( "empfs_setxattr lsetxattr" );
+		}
 	}
-
 	log_leave_function( "empfs_setxattr" );
 	return retstat;
 }
@@ -807,19 +819,19 @@ int empfs_getxattr( const char * path, const char * name, char * value, size_t s
 {
 	log_enter_function( "empfs_getxattr" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 
 	log_msg( "path = [%s], name = [%s], value = 0x%08x, size = %d\n", path, name, value, size );
 
-	empfs_fullpath( fpath, path );
-
-	retstat = lgetxattr( fpath, name, value, size );
-	if( retstat < 0 )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = empfs_error( "empfs_getxattr lgetxattr" );
+		retstat = lgetxattr( fpath, name, value, size );
+		if( retstat < 0 )
+		{
+			retstat = empfs_error( "empfs_getxattr lgetxattr" );
+		}
 	}
-
 	log_leave_function( "empfs_getxattr" );
 	return retstat;
 }
@@ -829,17 +841,17 @@ int empfs_listxattr( const char * path, char * list, size_t size )
 {
 	log_enter_function( "empfs_listxattr" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-
-	retstat = llistxattr( fpath, list, size );
-	if( retstat < 0 )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = empfs_error( "empfs_listxattr llistxattr");
+		retstat = llistxattr( fpath, list, size );
+		if( retstat < 0 )
+		{
+			retstat = empfs_error( "empfs_listxattr llistxattr");
+		}
 	}
-
 	log_leave_function( "empfs_listxattr" );
 	return retstat;
 }
@@ -849,17 +861,17 @@ int empfs_removexattr( const char * path, const char * name )
 {
 	log_enter_function( "empfs_removexattr" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path ); 
-
-	retstat = lremovexattr( fpath, name );
-	if( retstat < 0 )
+	if( empfs_fullpath( fpath, path ) ) 
 	{
-		retstat = empfs_error( "empfs_removexattr lrmovexattr" );
+		retstat = lremovexattr( fpath, name );
+		if( retstat < 0 )
+		{
+			retstat = empfs_error( "empfs_removexattr lrmovexattr" );
+		}
 	}
-
 	log_leave_function( "empfs_removexattr" );
 	return retstat;
 }
@@ -876,19 +888,22 @@ int empfs_opendir( const char * path, struct fuse_file_info * fi )
 	log_enter_function( "empfs_opendir" );
 
 	DIR * dp;
-	int   retstat = 0;
+	int   retstat = -ENOENT;
 	char  fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-
-	dp = opendir( fpath );
-	if( dp == NULL )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = empfs_error( "empfs_opendir opendir" );
+		dp = opendir( fpath );
+		if( dp == NULL )
+		{
+			retstat = empfs_error( "empfs_opendir opendir" );
+		}
+		else
+		{
+			retstat = 0;
+			fi->fh = (intptr_t) dp;
+		}
 	}
-
-	fi->fh = (intptr_t) dp;
-
 	log_leave_function( "empfs_opendir" );
 	return retstat;
 }
@@ -926,20 +941,20 @@ int empfs_readdir( const char * path, void * buf, fuse_fill_dir_t filler, off_t 
 	dp = (DIR *) (uintptr_t) fi->fh;
 
 	de = readdir( dp );
-	if( de == 0 )
+	if( de == NULL )
 	{
 		retstat = empfs_error( "empfs_readdir readdir" );
-		return retstat;
 	}
 
 	do
 	{
 		if( filler( buf, de->d_name, NULL, 0 ) != 0 )
 		{
-			return -ENOMEM;
+			retstat = -ENOMEM;
+			break;
 		}
 	}
-	while ( ( de = readdir( dp ) ) != NULL );
+	while( ( de = readdir( dp ) ) != NULL );
 
 	log_leave_function( "empfs_readdir" );
 	return retstat;
@@ -953,12 +968,10 @@ int empfs_releasedir( const char * path, struct fuse_file_info * fi )
 {
 	log_enter_function( "empfs_releasedir" );
 
-	int retstat = 0;
-
 	closedir( (DIR *) (uintptr_t) fi->fh );
 
 	log_leave_function( "empfs_releasedir" );
-	return retstat;
+	return 0;
 }
 
 /** Synchronize directory contents
@@ -972,10 +985,8 @@ int empfs_fsyncdir( const char * path, int datasync, struct fuse_file_info * fi 
 {
 	log_enter_function( "empfs_fsyncdir" );
 
-	int retstat = 0;
-
 	log_leave_function( "empfs_fsyncdir" );
-	return retstat;
+	return 0;
 }
 
 /**
@@ -1022,18 +1033,17 @@ int empfs_access( const char * path, int mask )
 {
 	log_enter_function( "empfs_access" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 
-	empfs_fullpath( fpath, path );
-
-	retstat = access( fpath, mask );
-
-	if( retstat < 0 )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = empfs_error( "empfs_access access" );
+		retstat = access( fpath, mask );
+		if( retstat < 0 )
+		{
+			retstat = empfs_error( "empfs_access access" );
+		}
 	}
-
 	log_leave_function( "empfs_access" );
 	return retstat;
 }
@@ -1054,20 +1064,23 @@ int empfs_create( const char * path, mode_t mode, struct fuse_file_info * fi )
 {
 	log_enter_function( "empfs_create" );
 
-	int  retstat = 0;
+	int  retstat = -ENOENT;
 	char fpath[ PATH_MAX ];
 	int  fd;
 
-	empfs_fullpath( fpath, path );
-
-	fd = creat( fpath, mode );
-	if( fd < 0 )
+	if( empfs_fullpath( fpath, path ) )
 	{
-		retstat = empfs_error( "empfs_create creat" );
+		fd = creat( fpath, mode );
+		if( fd < 0 )
+		{
+			retstat = empfs_error( "empfs_create creat" );
+		}
+		else
+		{
+			retstat = 0;
+			fi->fh = fd;
+		}
 	}
-
-	fi->fh = fd;
-
 	log_leave_function( "empfs_create" );
 	return retstat;
 }
@@ -1088,7 +1101,7 @@ int empfs_ftruncate( const char * path, off_t offset, struct fuse_file_info * fi
 {
 	log_enter_function( "empfs_ftruncate" );
 
-	int retstat = 0;
+	int retstat = -ENOENT;
 
 	retstat = ftruncate( fi->fh, offset );
 	if( retstat < 0 )
@@ -1116,7 +1129,7 @@ int empfs_fgetattr( const char * path, struct stat * statbuf, struct fuse_file_i
 {
 	log_enter_function( "empfs_fgetattr" );
 
-	int retstat = 0;
+	int retstat = -ENOENT;
 
 	retstat = fstat( fi->fh, statbuf );
 	if( retstat < 0 )
@@ -1242,6 +1255,7 @@ int main( int argc, char * argv[ ] )
 		fprintf( stderr, "Mount directory has not been specified.\n" );
 		empfs_usage( );
 	}
+
 	if( empfs_data->env_variable == NULL )
 	{
 		fprintf( stderr, "Environment variable has not been specified.\n" );
@@ -1258,7 +1272,7 @@ int main( int argc, char * argv[ ] )
 		printf( "fuse_argv[ 3 ]: %s\n", fuse_argv[ 3 ] );
 		printf( "fuse_argv[ 4 ]: %s\n", fuse_argv[ 4 ] );
 
-		empfs_data->logfile = log_open( );
+		empfs_data->logfile = log_open( empfs_data->env_variable );
 	}
 
 	return fuse_main( 4, fuse_argv, &empfs_oper, empfs_data );
