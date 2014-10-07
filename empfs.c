@@ -571,7 +571,6 @@ int empfs_truncate( const char * path, off_t newsize)
 }
 
 /** Change the access and/or modification times of a file */
-/* note -- I'll want to change this as soon as 2.6 is in debian testing */
 int empfs_utime( const char * path, struct utimbuf * ubuf )
 {
 	log_enter_function( "empfs_utime" );
@@ -585,6 +584,8 @@ int empfs_utime( const char * path, struct utimbuf * ubuf )
 		if( retstat < 0)
 		{
 			retstat = empfs_error( "empfs_utime utime" );
+			/* ignore file not found errors, so tar can create symlinks */
+			if( retstat == -ENOENT ) retstat = 0;
 		}
 	}
 	log_leave_function( "empfs_utime" );
@@ -1074,7 +1075,11 @@ int empfs_create( const char * path, mode_t mode, struct fuse_file_info * fi )
 		{
 			retstat = empfs_error( "empfs_create creat" );
 		}
-		fi->fh = fd;
+		else
+		{
+			retstat = 0;
+			fi->fh = fd;
+		}
 	}
 	log_leave_function( "empfs_create" );
 	return retstat;
@@ -1250,6 +1255,7 @@ int main( int argc, char * argv[ ] )
 		fprintf( stderr, "Mount directory has not been specified.\n" );
 		empfs_usage( );
 	}
+
 	if( empfs_data->env_variable == NULL )
 	{
 		fprintf( stderr, "Environment variable has not been specified.\n" );
@@ -1266,7 +1272,7 @@ int main( int argc, char * argv[ ] )
 		printf( "fuse_argv[ 3 ]: %s\n", fuse_argv[ 3 ] );
 		printf( "fuse_argv[ 4 ]: %s\n", fuse_argv[ 4 ] );
 
-		empfs_data->logfile = log_open( );
+		empfs_data->logfile = log_open( empfs_data->env_variable );
 	}
 
 	return fuse_main( 4, fuse_argv, &empfs_oper, empfs_data );

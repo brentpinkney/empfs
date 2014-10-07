@@ -42,14 +42,16 @@
 
 #include "log.h"
 
-FILE* log_open( )
+FILE* log_open( const char * var )
 {
 	FILE* logfile;
+	char name[ PATH_MAX ];
+	snprintf( name, sizeof( name ), "empfs-%s.log", var );
 
-	logfile = fopen( "empfs.log", "w" );
+	logfile = fopen( name, "w" );
 	if( logfile == NULL )
 	{
-		fprintf( stderr, "logfile\n" );
+		fprintf( stderr, "failed to open logfile\n" );
 		exit( EXIT_FAILURE );
 	}
 
